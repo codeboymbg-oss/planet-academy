@@ -1,10 +1,11 @@
+
 import { useState, useEffect } from "react";
+
+const STORAGE_KEY = "planet-academy-profiles";
 
 const planets = [
   {
-    name: "Mercury",
-    emoji: "☿️",
-    type: "Terrestrial planet",
+    name: "Mercury", emoji: "☿️", type: "Terrestrial planet",
     facts: [
       "Mercury is closest to the Sun.",
       "It is the smallest planet.",
@@ -13,9 +14,7 @@ const planets = [
     ]
   },
   {
-    name: "Venus",
-    emoji: "🟡",
-    type: "Terrestrial planet",
+    name: "Venus", emoji: "🟡", type: "Terrestrial planet",
     facts: [
       "Venus is the second planet.",
       "It is the hottest planet.",
@@ -24,9 +23,7 @@ const planets = [
     ]
   },
   {
-    name: "Earth",
-    emoji: "🌍",
-    type: "Terrestrial planet",
+    name: "Earth", emoji: "🌍", type: "Terrestrial planet",
     facts: [
       "Earth is the third planet.",
       "Earth has one natural moon.",
@@ -35,9 +32,7 @@ const planets = [
     ]
   },
   {
-    name: "Mars",
-    emoji: "🔴",
-    type: "Terrestrial planet",
+    name: "Mars", emoji: "🔴", type: "Terrestrial planet",
     facts: [
       "Mars is called the Red Planet.",
       "It has two moons: Phobos and Deimos.",
@@ -46,9 +41,7 @@ const planets = [
     ]
   },
   {
-    name: "Jupiter",
-    emoji: "🟠",
-    type: "Gas giant",
+    name: "Jupiter", emoji: "🟠", type: "Gas giant",
     facts: [
       "Jupiter is the largest planet.",
       "It has the Great Red Spot.",
@@ -57,9 +50,7 @@ const planets = [
     ]
   },
   {
-    name: "Saturn",
-    emoji: "🪐",
-    type: "Gas giant",
+    name: "Saturn", emoji: "🪐", type: "Gas giant",
     facts: [
       "Saturn is famous for its rings.",
       "Its rings contain ice and rocky particles.",
@@ -68,9 +59,7 @@ const planets = [
     ]
   },
   {
-    name: "Uranus",
-    emoji: "🔵",
-    type: "Ice giant",
+    name: "Uranus", emoji: "🔵", type: "Ice giant",
     facts: [
       "Uranus rotates on its side.",
       "It is an ice giant.",
@@ -79,9 +68,7 @@ const planets = [
     ]
   },
   {
-    name: "Neptune",
-    emoji: "🔷",
-    type: "Ice giant",
+    name: "Neptune", emoji: "🔷", type: "Ice giant",
     facts: [
       "Neptune is the eighth planet.",
       "It has extremely fast winds.",
@@ -139,50 +126,151 @@ const questions = [
   }
 ];
 
-function getSavedPlayer() {
+function makeId() {
+  return globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function makeProfile(username) {
+  return {
+    id: makeId(),
+    username: username.trim(),
+    xp: 0,
+    learned: [],
+    correctAnswers: 0
+  };
+}
+
+function loadProfiles() {
   try {
-    return JSON.parse(localStorage.getItem("planet-academy"));
-  } catch {
-    return null;
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+
+    if (saved && Array.isArray(saved.profiles)) {
+      return saved;
+    }
+
+    // Import an older single-player save if one exists.
+    const oldPlayer = JSON.parse(
+      localStorage.getItem("planet-academy")
+    );
+
+    if (oldPlayer?.username) {
+      const profile = {
+        ...makeProfile(oldPlayer.username),
+        ...oldPlayer,
+        id: makeId(),
+        learned: Array.isArray(oldPlayer.learned)
+          ? oldPlayer.learned
+          : []
+      };
+
+      return {
+        profiles: [profile],
+        activeId: profile.id
+      };
+    }
+  } catch (error) {
+    console.error("Could not load profiles:", error);
   }
+
+  return {
+    profiles: [],
+    activeId: null
+  };
 }
 
 export default function App() {
-  const [player, setPlayer] = useState(getSavedPlayer);
+  const [savedData, setSavedData] = useState(loadProfiles);
+
   const [username, setUsername] = useState("");
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useState("profiles");
   const [selectedPlanet, setSelectedPlanet] = useState(null);
 
   const [questionIndex, setQuestionIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [answered, setAnswered] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [finished, setFinished] = useState(false);
 
+  const player = savedData.profiles.find(
+    p => p.id === savedData.activeId
+  ) || null;
+
   useEffect(() => {
-    if (player) {
-      localStorage.setItem("planet-academy", JSON.stringify(player));
-    }
-  }, [player]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedData));
+  }, [savedData]);
 
   function createProfile(e) {
     e.preventDefault();
 
     if (!username.trim()) return;
 
-    setPlayer({
-      username: username.trim(),
-      xp: 0,
-      learned: [],
-      correctAnswers: 0
-    });
+    const newProfile = makeProfile(username);
 
+    setSavedData(old => ({
+      profiles: [...old.profiles, newProfile],
+      activeId: newProfile.id
+    }));
+
+    setUsername("");
     setPage("home");
   }
 
-  function learnPlanet(name) {
-    if (player.learned.includes(name)) return;
+  function switchProfile(id) {
+    setSavedData(old => ({
+      ...old,
+      activeId: id
+    }));
 
-    setPlayer(old => ({
+    setSelectedPlanet(null);
+    setPage("home");
+  }
+
+  function openProfileSelection() {
+    setSavedData(old => ({
+      ...old,
+      activeId: null
+    }));
+
+    setSelectedPlanet(null);
+    setPage("profiles");
+  }
+
+  function deleteProfile(id) {
+    const target = savedData.profiles.find(p => p.id === id);
+
+    if (!target) return;
+
+    if (!confirm(`Delete ${target.username}'s profile and all its progress?`)) {
+      return;
+    }
+
+    setSavedData(old => {
+      const remaining = old.profiles.filter(p => p.id !== id);
+
+      return {
+        profiles: remaining,
+        activeId:
+          old.activeId === id ? null : old.activeId
+      };
+    });
+
+    setPage("profiles");
+  }
+
+  function updatePlayer(callback) {
+    setSavedData(old => ({
+      ...old,
+      profiles: old.profiles.map(p =>
+        p.id === old.activeId ? callback(p) : p
+      )
+    }));
+  }
+
+  function learnPlanet(name) {
+    if (!player || player.learned.includes(name)) return;
+
+    updatePlayer(old => ({
       ...old,
       learned: [...old.learned, name],
       xp: old.xp + 20
@@ -193,6 +281,7 @@ export default function App() {
     setQuestionIndex(0);
     setScore(0);
     setAnswered(false);
+    setSelectedAnswer(null);
     setFinished(false);
     setPage("quiz");
   }
@@ -200,6 +289,7 @@ export default function App() {
   function answerQuestion(answer) {
     if (answered) return;
 
+    setSelectedAnswer(answer);
     setAnswered(true);
 
     if (answer === questions[questionIndex].correct) {
@@ -211,21 +301,24 @@ export default function App() {
     if (questionIndex < questions.length - 1) {
       setQuestionIndex(old => old + 1);
       setAnswered(false);
+      setSelectedAnswer(null);
     } else {
-      const finalScore = score;
-      setPlayer(old => ({
+      updatePlayer(old => ({
         ...old,
-        xp: old.xp + finalScore * 10,
-        correctAnswers: old.correctAnswers + finalScore
+        xp: old.xp + score * 10,
+        correctAnswers: old.correctAnswers + score
       }));
+
       setFinished(true);
     }
   }
 
   function resetProgress() {
+    if (!player) return;
+
     if (confirm("Reset all your progress?")) {
-      setPlayer(old => ({
-        username: old.username,
+      updatePlayer(old => ({
+        ...old,
         xp: 0,
         learned: [],
         correctAnswers: 0
@@ -233,13 +326,37 @@ export default function App() {
     }
   }
 
+  // PROFILE SELECTION SCREEN
   if (!player) {
     return (
       <div className="welcome">
         <div className="welcome-card">
           <h1>🪐 Planet Academy</h1>
-          <p>Welcome, future astronomer!</p>
-          <p>Create your explorer profile.</p>
+          <p>Choose your explorer profile!</p>
+
+          {savedData.profiles.length > 0 && (
+            <div>
+              <h2>👥 Existing profiles</h2>
+
+              {savedData.profiles.map(profile => (
+                <div className="panel" key={profile.id}>
+                  <h3>👤 {profile.username}</h3>
+                  <p>⭐ {profile.xp} XP</p>
+                  <p>🪐 {profile.learned.length}/8 planets learned</p>
+
+                  <button onClick={() => switchProfile(profile.id)}>
+                    SELECT PROFILE 🚀
+                  </button>
+
+                  <button onClick={() => deleteProfile(profile.id)}>
+                    🗑️ DELETE
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <h2>✨ Create a new explorer</h2>
 
           <form onSubmit={createProfile}>
             <input
@@ -249,7 +366,10 @@ export default function App() {
               maxLength={20}
               required
             />
-            <button type="submit">START EXPLORING 🚀</button>
+
+            <button type="submit">
+              CREATE PROFILE 🚀
+            </button>
           </form>
         </div>
       </div>
@@ -270,12 +390,16 @@ export default function App() {
         <button onClick={() => setPage("planets")}>Planets</button>
         <button onClick={startQuiz}>Quiz</button>
         <button onClick={() => setPage("profile")}>Profile</button>
+        <button onClick={openProfileSelection}>
+          👥 Switch Profile
+        </button>
       </nav>
 
       <main>
         {page === "home" && (
           <section className="panel">
             <h2>Welcome back, {player.username}! 🚀</h2>
+
             <div className="stats">
               <div>⭐ {player.xp} XP</div>
               <div>🏆 Level {level}</div>
@@ -298,6 +422,7 @@ export default function App() {
         {page === "planets" && (
           <section>
             <h2>🌌 Planet library</h2>
+
             <div className="planet-grid">
               {planets.map(planet => (
                 <button
@@ -311,6 +436,7 @@ export default function App() {
                   <span>{planet.emoji}</span>
                   <h3>{planet.name}</h3>
                   <p>{planet.type}</p>
+
                   <small>
                     {player.learned.includes(planet.name)
                       ? "✅ Learned"
@@ -333,7 +459,6 @@ export default function App() {
             </h2>
 
             <h3>{selectedPlanet.type}</h3>
-
             <h3>Interesting facts</h3>
 
             {selectedPlanet.facts.map((fact, i) => (
@@ -379,13 +504,11 @@ export default function App() {
                 {answered && (
                   <>
                     <p>
-                      {questions[questionIndex].correct ===
-                      questions[questionIndex].answers.find(
-                        a => a === questions[questionIndex].correct
-                      )
-                        ? "Check your answer above!"
-                        : ""}
+                      {selectedAnswer === questions[questionIndex].correct
+                        ? "✅ Correct! Excellent work!"
+                        : `❌ Not quite! The answer is ${questions[questionIndex].correct}.`}
                     </p>
+
                     <button onClick={nextQuestion}>
                       {questionIndex === questions.length - 1
                         ? "FINISH QUIZ"
@@ -400,6 +523,9 @@ export default function App() {
                 <h1>{score}/{questions.length}</h1>
                 <p>You earned {score * 10} XP!</p>
                 <button onClick={startQuiz}>TRY AGAIN</button>
+                <button onClick={() => setPage("home")}>
+                  HOME
+                </button>
               </>
             )}
           </section>
@@ -436,8 +562,14 @@ export default function App() {
                 : "🔒 Learn all eight planets"}
             </div>
 
+            <p>Correct quiz answers: {player.correctAnswers}</p>
+
             <button onClick={resetProgress}>
               RESET PROGRESS
+            </button>
+
+            <button onClick={openProfileSelection}>
+              SWITCH PROFILE
             </button>
           </section>
         )}
